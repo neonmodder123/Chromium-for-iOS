@@ -1,4 +1,3 @@
-# WARNING: INCOMPLETE WORKFLOW!
 name: Build
 
 on:
@@ -27,7 +26,15 @@ jobs:
 
       - name: Setting up the build
         run: |
-          autoninja -C out/Debug-iphoneos gn_all
+          export PATH="$(pwd)/depot_tools:$PATH"
+          cd chromium/src
+          rm -rf .vpython .vpython3
+          wget https://gist.github.com/growtopiajaw/9a218e197be196b6f6adffc3c68344b6/raw/255db913278c20e3a142b7e3295588bed7db7bc3/.vpython
+          wget https://gist.github.com/growtopiajaw/9a218e197be196b6f6adffc3c68344b6/raw/255db913278c20e3a142b7e3295588bed7db7bc3/.vpython3
+          pushd ios/build
+          rm -rf chrome_build.gni
+          wget https://gist.github.com/growtopiajaw/9a218e197be196b6f6adffc3c68344b6/raw/c5d729d58f1b731de3f14b7a1e88f537c6151c43/chrome_build.gni
+          popd
 
       - name: Generate build directories
         env:
