@@ -1,57 +1,60 @@
-name: Build
+name: Build Chromium iOS Minimal
 
 on:
   workflow_dispatch:
 
-concurrency:
-  group: ${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   build:
-    runs-on: macos-14
+    runs-on: macos-15 
+    
     steps:
-      - name: Clone depot_tools
+      - name: Maximize Disk Space
         run: |
-          rm -rf depot_tools
-          git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git
-
-      - name: Clone Chromium for iOS
+          echo "Checking available storage..."
+          df -h
+          sudo rm -rf /Applications/Xcode_15.0.app
+          ls /Applications/
+          sudo rm -rf /usr/local/share/dotnet
+          sudo rm -rf /opt/ghc
+          
+      - name: Install depot_tools
         run: |
-          export PATH="$HOME/depot_tools:$HOME/depot_tools/python-bin:$PATH"
-          rm -rf chromium
-          mkdir chromium
-          cd chromium
-          fetch --nohistory ios
+          git clone --depth 1 https://chromium.googlesource.com/chromium/tools/depot_tools.git
+          # Persist PATH across steps
+          echo "$GITHUB_WORKSPACE/depot_tools" >> $GITHUB_PATH
+          echo "$GITHUB_WORKSPACE/depot_tools/python-bin" >> $GITHUB_PATH
 
-      - name: Setting up the build
+      - name: Fetch Minimal Source
         run: |
-          autoninja -C out/Debug-iphoneos gn_all
+          mkdir chromium && cd chromium
+          fetch --no-history --no-tags ios
+          
+      - name: Post-Fetch Cleanup (Space Optimization)
+        run: |
+          cd chromium/src
+          find . -name ".git" -type d -exec rm -rf {} +
+          echo "Space after deleting .git:"
+          df -h
 
-      - name: Generate build directories
+      - name: Setup GN Config
         env:
           API_KEY: ${{ secrets.API_KEY }}
-          CLIENT_ID: ${{ secrets.CLIENT_ID }}
-          CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
         run: |
-          export PATH="$(pwd)/depot_tools:$PATH"
           cd chromium/src
-          brew install gnu-sed
-          mkdir -p out/Release-iphoneos
-          pushd out/Release-iphoneos
-          rm -rf args.gn || true
-          wget https://gist.github.com/growtopiajaw/9a218e197be196b6f6adffc3c68344b6/raw/20aaee68f7d8a4a6fda18301f33c5c974c92e5c7/args.gn
-          gsed "s/API_KEY/$API_KEY/g" -i args.gn
-          gsed "s/CLIENT_ID/$CLIENT_ID/g" -i args.gn
-          gsed "s/CLIENT_SECRET/$CLIENT_SECRET/g" -i args.gn
-          popd
+          python3 ios/build/tools/setup-gn.py
+
+          echo 'is_debug = false' >> out/Release-iphonesimulator/args.gn
+          echo 'symbol_level = 0' >> out/Release-iphonesimulator/args.gn
+          echo 'blink_symbol_level = 0' >> out/Release-iphonesimulator/args.gn
+          echo 'ios_enable_code_signing = false' >> out/Release-iphonesimulator/args.gn
+          
           gn gen out/Release-iphoneos
 
-      - name: Compile Chromium for iOS
+      - name: Compile Minimal Chrome
         run: |
-          export PATH="$(pwd)/depot_tools:$PATH"
           cd chromium/src
-          autoninja -C out/Release-iphoneos gn_all
+          # autoninja manages CPU threads automatically
+          autoninja -C out/Release-iphoneos chrome
 
       - name: Prepare Chromium for iOS binaries for release
         run: |
@@ -69,5 +72,5 @@ jobs:
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: Chromium.ipa
-          tag: v2.0
+          tag: v1.0
           file_glob: true
