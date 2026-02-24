@@ -12,7 +12,8 @@ jobs:
         run: |
           echo "Checking available storage..."
           df -h
-          sudo rm -rf /Applications/Xcode_15.0.app
+          sudo rm -rf /Applications/Xcode_26.1.1.app /Applications/Xcode_26.1.app /Applications/Xcode_26.2.0.app /Applications/Xcode_26.2.app /Applications/Xcode_26.3_Release_Candidate.app /Applications/Xcode_26.3.0.app /Applications/Xcode_26.3.app /Applications/Xcode_26.3.app /Applications/Xcode.app /Applications/Xcode_16.*.app /Applications/Xcode_16.*.app /Applications/PowerShell.app 
+
           ls /Applications/
           sudo rm -rf /usr/local/share/dotnet
           sudo rm -rf /opt/ghc
@@ -27,7 +28,7 @@ jobs:
       - name: Fetch Minimal Source
         run: |
           mkdir chromium && cd chromium
-          fetch --no-history --no-tags ios
+          fetch --nohistory ios
           
       - name: Post-Fetch Cleanup (Space Optimization)
         run: |
