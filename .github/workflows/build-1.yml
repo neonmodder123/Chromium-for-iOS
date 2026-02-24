@@ -1,0 +1,73 @@
+name: Build
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - name: Clone depot_tools
+        run: |
+          rm -rf depot_tools
+          git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git
+
+      - name: Clone Chromium for iOS
+        run: |
+          export PATH="$HOME/depot_tools:$HOME/depot_tools/python-bin:$PATH"
+          rm -rf chromium
+          mkdir chromium
+          cd chromium
+          fetch --nohistory ios
+
+      - name: Setting up the build
+        run: |
+          autoninja -C out/Debug-iphoneos gn_all
+
+      - name: Generate build directories
+        env:
+          API_KEY: ${{ secrets.API_KEY }}
+          CLIENT_ID: ${{ secrets.CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
+        run: |
+          export PATH="$(pwd)/depot_tools:$PATH"
+          cd chromium/src
+          brew install gnu-sed
+          mkdir -p out/Release-iphoneos
+          pushd out/Release-iphoneos
+          rm -rf args.gn || true
+          wget https://gist.github.com/growtopiajaw/9a218e197be196b6f6adffc3c68344b6/raw/20aaee68f7d8a4a6fda18301f33c5c974c92e5c7/args.gn
+          gsed "s/API_KEY/$API_KEY/g" -i args.gn
+          gsed "s/CLIENT_ID/$CLIENT_ID/g" -i args.gn
+          gsed "s/CLIENT_SECRET/$CLIENT_SECRET/g" -i args.gn
+          popd
+          gn gen out/Release-iphoneos
+
+      - name: Compile Chromium for iOS
+        run: |
+          export PATH="$(pwd)/depot_tools:$PATH"
+          cd chromium/src
+          autoninja -C out/Release-iphoneos gn_all
+
+      - name: Prepare Chromium for iOS binaries for release
+        run: |
+          cd chromium/src
+          pushd out/Release-iphoneos
+          mkdir Payload
+          mv Chromium.app Payload/
+          7z a -tzip -mx=9 Chromium.ipa Payload
+          cp Chromium.ipa ~/
+          cp Chromium.ipa ~/chromium/src/
+          popd
+
+      - name: Upload release
+        uses: svenstaro/upload-release-action@2.2.1
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: Chromium.ipa
+          tag: v2.0
+          file_glob: true
