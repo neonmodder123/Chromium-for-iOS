@@ -50,7 +50,8 @@ jobs:
           mkdir -p out/Release-iphoneos
           pushd out/Release-iphoneos
           rm -rf args.gn || true
-          wget https://gist.github.com/neonmodder123/91fad91dc5dee89e262be9b67988fe55/raw/8968cbfc3a175e93c345e328eb9bce9ef4b0a052/args.gn
+          python3 ios/build/tools/setup-gn.py
+          cat args.gn
           gsed "s/API_KEY/$API_KEY/g" -i args.gn
           gsed "s/CLIENT_ID/$CLIENT_ID/g" -i args.gn
           gsed "s/CLIENT_SECRET/$CLIENT_SECRET/g" -i args.gn
