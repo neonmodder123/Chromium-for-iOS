@@ -38,6 +38,37 @@ jobs:
           wget https://gist.github.com/growtopiajaw/9a218e197be196b6f6adffc3c68344b6/raw/c5d729d58f1b731de3f14b7a1e88f537c6151c43/chrome_build.gni
           popd
 
+      - name: Create setup-gn configuration
+        env:
+          API_KEY: ${{ secrets.API_KEY }}
+          CLIENT_ID: ${{ secrets.CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
+        run: |
+          cd chromium
+          cat > .setup-gn << 'EOF'
+          [gn_args]
+          target_os = "ios"
+          target_cpu = "arm64"
+          is_debug = false
+          is_official_build = true
+          is_component_build = false
+          
+          ios_enable_code_signing = false
+          ios_code_signing_identity_description = ""
+          ios_app_bundle_id_prefix = "org.chromium"
+          
+          # Disable extensions to simplify build
+          ios_enable_search_widget_extension = false
+          ios_enable_content_widget_extension = false
+          ios_enable_share_extension = false
+          ios_enable_credential_provider_extension = false
+          
+          # API Keys placeholders
+          google_api_key = "API_KEY"
+          google_default_client_id = "CLIENT_ID"
+          google_default_client_secret = "CLIENT_SECRET"
+          EOF
+
       - name: Generate build directories
         env:
           API_KEY: ${{ secrets.API_KEY }}
@@ -48,41 +79,24 @@ jobs:
           cd chromium/src
           brew install gnu-sed
           
-          # Ensure the ios/build/tools directory exists
-          mkdir -p ios/build/tools
+          # Run setup-gn.py to generate build configuration
+          python3 ios/build/tools/setup-gn.py
           
-          # Check if setup-gn.py exists, if not create a basic one
-          if [ ! -f "ios/build/tools/setup-gn.py" ]; then
-            echo "setup-gn.py not found, creating basic args.gn manually"
-            mkdir -p out/Release-iphoneos
-            cat > out/Release-iphoneos/args.gn << 'EOF'
-          target_os = "ios"
-          target_cpu = "arm64"
-          is_debug = false
-          is_official_build = true
-          is_component_build = false
-          
-          google_api_key = "API_KEY"
-          google_default_client_id = "CLIENT_ID"
-          google_default_client_secret = "CLIENT_SECRET"
-          
-          ios_enable_code_signing = false
-          EOF
-          else
-            mkdir -p out/Release-iphoneos
-            pushd out/Release-iphoneos
-            python3 ../../ios/build/tools/setup-gn.py
-            popd
-          fi
-          
-          # Apply API key substitutions
+          # Replace API keys in the generated args.gn
           pushd out/Release-iphoneos
+          echo "Original args.gn:"
           cat args.gn
+          
           gsed "s/API_KEY/$API_KEY/g" -i args.gn
           gsed "s/CLIENT_ID/$CLIENT_ID/g" -i args.gn
           gsed "s/CLIENT_SECRET/$CLIENT_SECRET/g" -i args.gn
+          
+          echo ""
+          echo "Modified args.gn:"
+          cat args.gn
           popd
           
+          # Generate ninja files
           gn gen out/Release-iphoneos
 
       - name: Compile Chromium for iOS
@@ -93,14 +107,10 @@ jobs:
 
       - name: Prepare Chromium for iOS binaries for release
         run: |
-          cd chromium/src
-          pushd out/Release-iphoneos
-          mkdir Payload
-          mv Chromium.app Payload/
-          7z a -tzip -mx=9 Chromium.ipa Payload
-          cp Chromium.ipa ~/
-          cp Chromium.ipa ~/chromium/src/
-          popd
+          cd chromium/src/out/Release-iphoneos
+          mkdir -p Payload
+          cp -R Chromium.app Payload/
+          zip -r Chromium.ipa Payload
 
       - name: Upload release
         uses: svenstaro/upload-release-action@2.2.1
