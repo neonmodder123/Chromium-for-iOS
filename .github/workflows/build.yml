@@ -24,7 +24,7 @@ jobs:
           rm -rf chromium
           mkdir chromium
           cd chromium
-          fetch --nohistory ios
+          fetch --no-history ios
 
       - name: Setting up the build
         run: |
@@ -47,15 +47,42 @@ jobs:
           export PATH="$(pwd)/depot_tools:$PATH"
           cd chromium/src
           brew install gnu-sed
-          mkdir -p out/Release-iphoneos
+          
+          # Ensure the ios/build/tools directory exists
+          mkdir -p ios/build/tools
+          
+          # Check if setup-gn.py exists, if not create a basic one
+          if [ ! -f "ios/build/tools/setup-gn.py" ]; then
+            echo "setup-gn.py not found, creating basic args.gn manually"
+            mkdir -p out/Release-iphoneos
+            cat > out/Release-iphoneos/args.gn << 'EOF'
+          target_os = "ios"
+          target_cpu = "arm64"
+          is_debug = false
+          is_official_build = true
+          is_component_build = false
+          
+          google_api_key = "API_KEY"
+          google_default_client_id = "CLIENT_ID"
+          google_default_client_secret = "CLIENT_SECRET"
+          
+          ios_enable_code_signing = false
+          EOF
+          else
+            mkdir -p out/Release-iphoneos
+            pushd out/Release-iphoneos
+            python3 ../../ios/build/tools/setup-gn.py
+            popd
+          fi
+          
+          # Apply API key substitutions
           pushd out/Release-iphoneos
-          rm -rf args.gn || true
-          python3 ios/build/tools/setup-gn.py
           cat args.gn
           gsed "s/API_KEY/$API_KEY/g" -i args.gn
           gsed "s/CLIENT_ID/$CLIENT_ID/g" -i args.gn
           gsed "s/CLIENT_SECRET/$CLIENT_SECRET/g" -i args.gn
           popd
+          
           gn gen out/Release-iphoneos
 
       - name: Compile Chromium for iOS
@@ -79,6 +106,6 @@ jobs:
         uses: svenstaro/upload-release-action@2.2.1
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: Chromium.ipa
+          file: chromium/src/out/Release-iphoneos/Chromium.ipa
           tag: v2.0
-          file_glob: true
+          file_glob: false
