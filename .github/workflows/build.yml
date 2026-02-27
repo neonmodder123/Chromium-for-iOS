@@ -30,19 +30,14 @@ jobs:
         run: |
           export PATH="$(pwd)/depot_tools:$PATH"
           cd chromium/src
-          rm -rf .vpython .vpython3
-          wget https://gist.github.com/growtopiajaw/9a218e197be196b6f6adffc3c68344b6/raw/255db913278c20e3a142b7e3295588bed7db7bc3/.vpython
-          wget https://gist.github.com/growtopiajaw/9a218e197be196b6f6adffc3c68344b6/raw/255db913278c20e3a142b7e3295588bed7db7bc3/.vpython3
-          pushd ios/build
-          rm -rf chrome_build.gni
-          wget https://gist.github.com/growtopiajaw/9a218e197be196b6f6adffc3c68344b6/raw/c5d729d58f1b731de3f14b7a1e88f537c6151c43/chrome_build.gni
-          popd
+          if [ -f .vpython ]; then
+            echo "Using existing .vpython files from repo."
+          else
+            wget https://gist.github.com/growtopiajaw/9a218e197be196b6f6adffc3c68344b6/raw/255db913278c20e3a142b7e3295588bed7db7bc3/.vpython
+            wget https://gist.github.com/growtopiajaw/9a218e197be196b6f6adffc3c68344b6/raw/255db913278c20e3a142b7e3295588bed7db7bc3/.vpython3
+          fi
 
       - name: Create setup-gn configuration
-        env:
-          API_KEY: ${{ secrets.API_KEY }}
-          CLIENT_ID: ${{ secrets.CLIENT_ID }}
-          CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
         run: |
           cd chromium
           cat > .setup-gn << 'EOF'
@@ -52,22 +47,31 @@ jobs:
           is_debug = false
           is_official_build = true
           is_component_build = false
-          
+          enable_remoting = false
+
           ios_enable_code_signing = false
-          ios_code_signing_identity_description = ""
-          ios_app_bundle_id_prefix = "org.chromium"
-          
-          # Disable extensions to simplify build
+
           ios_enable_search_widget_extension = false
           ios_enable_content_widget_extension = false
           ios_enable_share_extension = false
           ios_enable_credential_provider_extension = false
+          ios_enable_widget_kit_extension = false
+          ios_enable_intents_extension = false
+          ios_enable_screen_time = false
+
+          ios_app_bundle_id_prefix = "org.chromium"
           
-          # API Keys placeholders
+          # API Keys (will be replaced)
           google_api_key = "API_KEY"
           google_default_client_id = "CLIENT_ID"
           google_default_client_secret = "CLIENT_SECRET"
+          
+          [filters]
+          filter_0 = "//ios/chrome/app:chrome"
           EOF
+          
+          echo "Created .setup-gn. \nContents:"
+          cat .setup-gn
 
       - name: Generate build directories
         env:
@@ -79,43 +83,53 @@ jobs:
           cd chromium/src
           brew install gnu-sed
           
-          # Run setup-gn.py to generate build configuration
+          echo "Running setup-gn.py..."
           python3 ios/build/tools/setup-gn.py
           
-          # Replace API keys in the generated args.gn
+          echo "Replacing API keys..."
           pushd out/Release-iphoneos
-          echo "Original args.gn:"
-          cat args.gn
           
-          gsed "s/API_KEY/$API_KEY/g" -i args.gn
-          gsed "s/CLIENT_ID/$CLIENT_ID/g" -i args.gn
-          gsed "s/CLIENT_SECRET/$CLIENT_SECRET/g" -i args.gn
+          gsed -i "s/API_KEY/${API_KEY}/g" args.gn
+          gsed -i "s/CLIENT_ID/${CLIENT_ID}/g" args.gn
+          gsed -i "s/CLIENT_SECRET/${CLIENT_SECRET}/g" args.gn
           
-          echo ""
-          echo "Modified args.gn:"
+          echo "Final args.gn contents:"
           cat args.gn
           popd
           
-          # Generate ninja files
+          echo "Generating build files..."
           gn gen out/Release-iphoneos
 
       - name: Compile Chromium for iOS
         run: |
           export PATH="$(pwd)/depot_tools:$PATH"
           cd chromium/src
-          autoninja -C out/Release-iphoneos gn_all
+          echo "Building Chrome..."
+          autoninja -C out/Release-iphoneos chrome
 
       - name: Prepare Chromium for iOS binaries for release
         run: |
           cd chromium/src/out/Release-iphoneos
+
+          if [ ! -d "Chromium.app" ]; then
+            echo "Error: Chromium.app not found!"
+            ls -la
+            exit 1
+          fi
+          
+          echo "Chromium.app found! Creating IPA..."
           mkdir -p Payload
           cp -R Chromium.app Payload/
           zip -r Chromium.ipa Payload
+          
+          echo "=== IPA created ==="
+          ls -lh Chromium.ipa
 
       - name: Upload release
         uses: svenstaro/upload-release-action@2.2.1
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: chromium/src/out/Release-iphoneos/Chromium.ipa
-          tag: v2.0
+          tag: v1.0
+          overwrite: true
           file_glob: false
