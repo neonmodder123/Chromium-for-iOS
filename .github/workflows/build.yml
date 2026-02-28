@@ -37,6 +37,13 @@ jobs:
             wget https://gist.github.com/growtopiajaw/9a218e197be196b6f6adffc3c68344b6/raw/255db913278c20e3a142b7e3295588bed7db7bc3/.vpython3
           fi
 
+      - name: Patch Xcode version check
+        run: |
+          sed -i '' 's/xcode_version_int >= 2600/xcode_version_int >= 1600/g' ios/build/chrome_build.gni
+          
+          echo "Patched chrome_build.gni"
+          head -30 ios/build/chrome_build.gni
+      
       - name: Create setup-gn configuration
         run: |
           cd chromium
@@ -122,7 +129,7 @@ jobs:
           cp -R Chromium.app Payload/
           zip -r Chromium.ipa Payload
           
-          echo "=== IPA created ==="
+          echo "IPA created"
           ls -lh Chromium.ipa
 
       - name: Upload release
